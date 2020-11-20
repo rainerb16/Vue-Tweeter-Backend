@@ -36,10 +36,33 @@ def nerdrUsers():
                 return Response(json.dumps(userId, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
-    # elif request.method == 'POST':
-    #     conn = None
-    #     cursor = None
-    #     blog_content = request.json.get("content")
-    #     blog_created_at = request.json.get("created_at")
-    #     blog_title = request.json.get("blog_title")
-    #     rows = None
+    elif request.method == 'POST':
+        conn = None
+        cursor = None
+        userEmail = request.json.get("email")
+        username = request.json.get("username")
+        userBio = request.json.get("bio")
+        userBirthdate = request.json.get("birthdate")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO user(email, username, bio, birthdate) VALUES(?, ?, ?, ?)", [userEmail, username, userBio, userBirthdate])
+            conn.commit()
+            rows = cursor.rowcount
+        except mariadb.ProgrammingError:
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError:
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError:
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                return Response("User signed up!", mimetype = "text/html", status = 201)
+            else:
+                return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
