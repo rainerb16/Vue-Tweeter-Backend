@@ -8,16 +8,18 @@ app = Flask(__name__)
 CORS(app)
 
 @app.route('/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
+
+# GET Users or one specific user
 def nerdrUsers():
     if request.method == 'GET':
         conn = None
         cursor = None
-        nerdr_user = None
+        userId = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user")
-            nerdr_user = cursor.fetchall()
+            userId = cursor.fetchall()
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
         except mariadb.DatabaseError:
@@ -30,7 +32,14 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(nerdr_user != None):
-                return Response(json.dumps(nerdr_user, default = str), mimetype = "application/json", status = 200)
+            if(userId != None):
+                return Response(json.dumps(userId, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
+    # elif request.method == 'POST':
+    #     conn = None
+    #     cursor = None
+    #     blog_content = request.json.get("content")
+    #     blog_created_at = request.json.get("created_at")
+    #     blog_title = request.json.get("blog_title")
+    #     rows = None
