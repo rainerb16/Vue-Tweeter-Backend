@@ -8,10 +8,50 @@ import secrets
 app = Flask(__name__)
 CORS(app)
 
+@app.route('/login', methods=['POST', 'DELETE'])
+def userLoginLogout():
+    # USER LOGIN
+    if request.method == 'POST':
+        conn = None
+        cursor = None
+        userEmail = request.json.get("email")
+        userPassword = request.json.get("password")
+        rows = None
+        user = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user WHERE email = ? AND password = ?", [userEmail, userPassword,]) 
+            user = cursor.fetchall()
+            rows = cursor.rowcount
+            if(rows == 1):
+                loginToken = secrets.token_hex(16)
+                print(loginToken)
+                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [user[0][0], loginToken])
+                conn.commit()
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError:
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError:
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                return Response("Logged in!", mimetype = "text/html", status = 201)
+            else:
+                return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+
+
 @app.route('/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 
-# GET USERS OR ONE SPECIFIC USER
 def nerdrUsers():
+    # GET USERS OR ONE SPECIFIC USER
     if request.method == 'GET':
         conn = None
         cursor = None
@@ -37,7 +77,6 @@ def nerdrUsers():
                 return Response(json.dumps(userId, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
-
     # SIGN UP NEW USER
     elif request.method == 'POST':
         conn = None
@@ -67,43 +106,48 @@ def nerdrUsers():
                 conn.rollback()
                 conn.close()
             if(rows == 1):
-                loginToken = secrets.token_hex(16)
                 return Response("User signed up!", mimetype = "text/html", status = 201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
-    
     # UPDATE / PATCH USER INFORMATION
     elif request.method == 'PATCH':
         conn = None
         cursor = None
         rows = None
+        userTokenSuccess = None
         userEmail = request.json.get("email")
         username = request.json.get("username")
         userBio = request.json.get("bio")
         userBirthdate = request.json.get("birthdate")
         userPassword = request.json.get("password")
-        userId = request.json.get("userId")
-        # loginToken = request.json.get("loginToken")
+        userId = request.json.get("id")
+        loginToken = request.json.get("loginToken")
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            if(userEmail != "" and userEmail != None):
-                cursor.execute("UPDATE user SET email = ? WHERE userId = ?", [userEmail, userId,])
-            if(username != "" and username != None):
-                cursor.execute("UPDATE user SET username = ? WHERE userId = ?", [username, userId,])
-            if(userBio != "" and userBio != None):
-                cursor.execute("UPDATE user SET bio = ? WHERE userId = ?", [userBio, userId,])
-            if(userBirthdate != "" and userBirthdate != None):
-                cursor.execute("UPDATE user SET birthdate = ? WHERE userId = ?", [userBirthdate, userId,])
-            if(userPassword != "" and userPassword != None):
-                cursor.execute("UPDATE user SET password = ? WHERE userId = ?", [userPassword, userId,])
-            conn.commit()
+            cursor.execute("SELECT * FROM user_session WHERE id = ? AND loginToken = ?", [userId, loginToken,])
+            userTokenSuccess = cursor.fetchall()
             rows = cursor.rowcount
-        except mariadb.ProgrammingError:
+            if userTokenSuccess and rows == 1:
+                if(userEmail != "" and userEmail != None):
+                    cursor.execute("UPDATE user SET email = ? WHERE id = ?", [userEmail, userId,])
+                if(username != "" and username != None):
+                    cursor.execute("UPDATE user SET username = ? WHERE id = ?", [username, userId,])
+                if(userBio != "" and userBio != None):
+                    cursor.execute("UPDATE user SET bio = ? WHERE id = ?", [userBio, userId,])
+                if(userBirthdate != "" and userBirthdate != None):
+                    cursor.execute("UPDATE user SET birthdate = ? WHERE id = ?", [userBirthdate, userId,])
+                if(userPassword != "" and userPassword != None):
+                    cursor.execute("UPDATE user SET password = ? WHERE id = ?", [userPassword, userId,])
+            conn.commit()
+        except mariadb.ProgrammingError as e:
+            print(e)
             print("There was a coding error by a NERDR here... ")
-        except mariadb.DatabaseError:
+        except mariadb.DatabaseError as e:
+            print(e)
             print("Oops, there's a database error...")
-        except mariadb.OperationalError:
+        except mariadb.OperationalError as e:
+            print(e)
             print("Connection error, please try again...")
         finally:
             if(cursor != None):
@@ -111,7 +155,44 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows <= 6):
+            if(rows == 1):
                 return Response("Information updated!", mimetype = "text/html", status = 201)
+            else:
+                return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+    # USER DELETE
+    elif request.method == 'DELETE':
+        conn = None
+        cursor = None
+        rows = None
+        userTokenSuccess = None
+        userId = request.json.get("id")
+        userPassword = request.json.get("password")
+        loginToken = request.json.get("loginToken")
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE id = ? AND loginToken = ?", [userId, loginToken,])
+            userTokenSuccess = cursor.fetchall()
+            rows = cursor.rowcount
+            if userTokenSuccess and rows == 1:
+                cursor.execute("DELETE FROM user WHERE id = ? AND password = ?", [userId, userPassword,])
+            conn.commit()
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                return Response("User Deleted!", mimetype = "text/html", status = 201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
