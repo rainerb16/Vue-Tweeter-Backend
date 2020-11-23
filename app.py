@@ -46,6 +46,38 @@ def userLoginLogout():
                 return Response("Logged in!", mimetype = "text/html", status = 201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+    # USER LOGOUT 
+    elif request.method == 'DELETE':
+        conn = None
+        cursor = None
+        rows = None
+        userId = ("id")
+        loginToken = request.json.get("loginToken")
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_session WHERE loginToken = ?", [loginToken,])
+            conn.commit()
+            rows = cursor.rowcount
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                return Response("You are logged out!", mimetype = "text/html", status = 201)
+            else:
+                return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
 
 
 @app.route('/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
@@ -165,17 +197,17 @@ def nerdrUsers():
         cursor = None
         rows = None
         userTokenSuccess = None
-        userId = request.json.get("id")
         userPassword = request.json.get("password")
         loginToken = request.json.get("loginToken")
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_session WHERE id = ? AND loginToken = ?", [userId, loginToken,])
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
             userTokenSuccess = cursor.fetchall()
+            print(userTokenSuccess)
             rows = cursor.rowcount
-            if userTokenSuccess and rows == 1:
-                cursor.execute("DELETE FROM user WHERE id = ? AND password = ?", [userId, userPassword,])
+            if userTokenSuccess:
+                cursor.execute("DELETE FROM user WHERE password = ?", [userPassword,])
             conn.commit()
         except mariadb.ProgrammingError as e:
             print(e)
