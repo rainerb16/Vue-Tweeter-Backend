@@ -8,7 +8,8 @@ import secrets
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/login', methods=['POST', 'DELETE'])
+@app.route('/api/login', methods=['POST', 'DELETE'])
+
 def userLoginLogout():
     # USER LOGIN
     if request.method == 'POST':
@@ -51,7 +52,7 @@ def userLoginLogout():
         conn = None
         cursor = None
         rows = None
-        userId = ("id")
+        userId = request.json.get("id")
         loginToken = request.json.get("loginToken")
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
@@ -80,7 +81,7 @@ def userLoginLogout():
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
 
 
-@app.route('/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
+@app.route('/api/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 
 def nerdrUsers():
     # GET USERS OR ONE SPECIFIC USER
@@ -91,7 +92,10 @@ def nerdrUsers():
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user")
+            if userId == "" and userId == None:
+                cursor.execute("SELECT * FROM user")
+            else:
+                cursor.execute("SELECT * FROM user WHERE id = ?", [userId,])
             userId = cursor.fetchall()
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
@@ -123,8 +127,14 @@ def nerdrUsers():
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO user(email, username, bio, birthdate, password) VALUES(?, ?, ?, ?, ?)", [userEmail, username, userBio, userBirthdate, userPassword,])
-            conn.commit()
             rows = cursor.rowcount
+            if rows == 1:
+                loginToken = secrets.token_hex(16)
+                userId = cursor.lastrowid
+                print(loginToken)
+                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [userId, loginToken])
+                conn.commit()
+                rows = cursor.amount
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
         except mariadb.DatabaseError:
@@ -204,11 +214,11 @@ def nerdrUsers():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
             userTokenSuccess = cursor.fetchall()
+            cursor.execute("SELECT * FROM user WHERE id = ?", [userTokenSuccess[0][2],])
+            cursor.fetchall()
+            # conn.commit()
             print(userTokenSuccess)
             rows = cursor.rowcount
-            if userTokenSuccess:
-                cursor.execute("DELETE FROM user WHERE password = ?", [userPassword,])
-            conn.commit()
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -225,6 +235,35 @@ def nerdrUsers():
                 conn.rollback()
                 conn.close()
             if(rows == 1):
-                return Response("User Deleted!", mimetype = "text/html", status = 201)
+                return Response( mimetype = "text/html", status = 201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+
+@app.route('/api/tweets', methods=['GET', 'POST', 'DELETE', 'PATCH'])
+
+def userTweets():
+    if request.method == 'GET':
+        conn = None
+        cursor = None
+        userId = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM tweet")
+            userId = cursor.fetchall()
+        except mariadb.ProgrammingError:
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError:
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError:
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(userId != None):
+                return Response(json.dumps(userId, default = str), mimetype = "application/json", status = 200)
+            else:
+                return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
