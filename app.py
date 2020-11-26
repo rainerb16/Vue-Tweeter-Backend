@@ -134,6 +134,7 @@ def nerdrUsers():
         user_birthdate = request.json.get("birthdate")
         user_password = request.json.get("password")
         rows = None
+        user = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
@@ -201,6 +202,8 @@ def nerdrUsers():
                     cursor.execute("UPDATE user SET password = ? WHERE id = ?", [user_password, user_success[0],])
                 conn.commit()
                 rows = cursor.rowcount
+                cursor.execute("SELECT * FROM user WHERE id =?", [user_success[0],])
+                user = cursor.fetchall()
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -216,13 +219,13 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows):
+            if(rows != None):
                 user_data = {
                     "userId": user_success[0],
-                    "email": user[1],
-                    "username": user[2],
-                    "bio": user[3],
-                    "birthdate": user[4],
+                    "email": user[0][1],
+                    "username": user[0][2],
+                    "bio": user[0][3],
+                    "birthdate": user[0][4],
                 }
                 return Response(json.dumps(user_data, default=str), mimetype="application/json", status=200)
             else:
@@ -269,9 +272,8 @@ def nerdrUsers():
                 return Response("There was an error deleting your account...", mimetype = "text/html", status = 500)
 
 @app.route('/api/tweets', methods=['GET', 'POST', 'DELETE', 'PATCH'])
-
-# CANNOT GET ALL USERS TWEETS?
 def userTweets():
+    # GET USER TWEETS AND GET TWEETS FROM ONE USER
     if request.method == 'GET':
         conn = None
         cursor = None
