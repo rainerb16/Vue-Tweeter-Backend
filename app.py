@@ -90,7 +90,7 @@ def nerdrUsers():
         conn = None
         cursor = None
         user_id = request.json.get("id")
-        users = None
+        rows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
@@ -98,7 +98,7 @@ def nerdrUsers():
                 cursor.execute("SELECT * FROM user WHERE id = ?", [user_id],)
             else:
                 cursor.execute("SELECT * FROM user")
-            users = cursor.fetchall()
+            rows = cursor.fetchall()
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
         except mariadb.DatabaseError:
@@ -111,15 +111,18 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(users != None):
-                user_data = {
-                    "userId": users[0][0],
-                    "email": users[0][1],
-                    "username": users[0][2],
-                    "bio": users[0][3],
-                    "birthdate": users[0][4]
-                }
-                return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 200)
+            if(rows):
+                all_users_data = []
+                for row in rows:
+                    user_data = {
+                        "userId": row[0],
+                        "email": row[1],
+                        "username": row[2],
+                        "bio": row[3],
+                        "birthdate": row[4]
+                        }  
+                    all_users_data.append(user_data)
+                return Response(json.dumps(all_users_data, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
     # SIGN UP NEW USER
@@ -279,17 +282,9 @@ def userTweets():
             if user_id == "" and user_tweets == None:
                 cursor.execute("SELECT * FROM tweet")
                 rows = cursor.fetchall()
-                user_tweets = []
-                column_name = [i[0] for i in cursor.description]
-                for row in rows:
-                    user_tweets.append(dict(zip(column_name, row)))
             else:
-                cursor.execute("SELECT user_id, id, content, createdAt FROM tweet WHERE user_id = ?", [user_id,])
-                rows = cursor.fetchall()
-                user_tweets = []
-                column_name = [i[0] for i in cursor.description]
-                for row in rows:
-                    user_tweets.append(dict(zip(column_name, row)))       
+                cursor.execute("SELECT userId, content, createdAt FROM tweet WHERE userId = ?", [user_id,])
+                rows = cursor.fetchall()       
             # if user_id != "" and user_id != None:
             # elif userId == "" and userId == None:
             # else:
@@ -307,7 +302,7 @@ def userTweets():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(user_tweets != None):
-                return Response(json.dumps(user_tweets, default = str), mimetype = "application/json", status = 200)
+            if(rows):
+                return Response(json.dumps(rows, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
