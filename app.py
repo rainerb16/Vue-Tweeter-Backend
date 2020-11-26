@@ -84,30 +84,21 @@ def userLoginLogout():
 
 @app.route('/api/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 def nerdrUsers():
-    # CAN GET ALL USERS BUT NOT ONE SPECIFIC USER
+    # CAN'T FIGURE OUT HOW TO LOOP THROUGH ALL USERS, ONLY GETTING ONE USER BACK
     # GET USERS OR ONE SPECIFIC USER
     if request.method == 'GET':
         conn = None
         cursor = None
-        user_id = request.json.get("userId")
+        user_id = request.json.get("id")
         users = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            if user_id == None or user_id == "": 
-                cursor.execute("SELECT * FROM user")
-                rows = cursor.fetchall()
-                users = []
-                headers = [i[0] for i in cursor.description]
-                for row in rows:
-                    users.append(dict(zip(headers,row)))
+            if user_id != None and user_id != "":
+                cursor.execute("SELECT * FROM user WHERE id = ?", [user_id],)
             else:
-                cursor.execute("SELECT * FROM user WHERE id = ?", [user_id,])
-                rows = cursor.fetchone()
-                users = {}
-                headers = [ i[0] for i in cursor.description]
-                users = dict(zip(headers,rows))
-                print(users)
+                cursor.execute("SELECT * FROM user")
+            users = cursor.fetchall()
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
         except mariadb.DatabaseError:
@@ -121,37 +112,36 @@ def nerdrUsers():
                 conn.rollback()
                 conn.close()
             if(users != None):
-                # for user in users:
-                #     user_info = {
-                #         "userId": users[0][0],
-                #         "email": users[0][1],
-                #         "username": users[0][2],
-                #         "bio": users[0][3],
-                #         "birthdate": users[0][4]
-                #     }
-                return Response(json.dumps(users, default = str), mimetype = "application/json", status = 200)
+                user_data = {
+                    "userId": users[0][0],
+                    "email": users[0][1],
+                    "username": users[0][2],
+                    "bio": users[0][3],
+                    "birthdate": users[0][4]
+                }
+                return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
     # SIGN UP NEW USER
     elif request.method == 'POST':
         conn = None
         cursor = None
-        userEmail = request.json.get("email")
+        user_email = request.json.get("email")
         username = request.json.get("username")
-        userBio = request.json.get("bio")
+        user_bio = request.json.get("bio")
         user_birthdate = request.json.get("birthdate")
-        userPassword = request.json.get("password")
+        user_password = request.json.get("password")
         rows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO user(email, username, bio, birthdate, password) VALUES(?, ?, ?, ?, ?)", [userEmail, username, userBio, user_birthdate, userPassword,])
+            cursor.execute("INSERT INTO user(email, username, bio, birthdate, password) VALUES(?, ?, ?, ?, ?)", [user-email, username, user_bio, user_birthdate, user_password,])
             rows = cursor.rowcount
             if rows == 1:
                 loginToken = secrets.token_hex(16)
-                userId = cursor.lastrowid
+                user_id = cursor.lastrowid
                 print(loginToken)
-                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [userId, loginToken])
+                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [user_id, loginToken])
                 conn.commit()
                 rows = cursor.amount
         except mariadb.ProgrammingError:
@@ -167,15 +157,15 @@ def nerdrUsers():
                 conn.rollback()
                 conn.close()
             if(rows == 1):
-                userInfo = {
-                    "userId": userId,
-                    "email": userEmail,
+                user_info = {
+                    "userId": user_id,
+                    "email": user_email,
                     "username": username,
-                    "bio": userBio,
+                    "bio": user_bio,
                     "birthdate": user_birthdate,
                     "loginToken": loginToken
                 }
-                return Response(json.dumps(userInfo, default=str), mimetype="application/json", status=201)
+                return Response(json.dumps(user_info, default=str), mimetype="application/json", status=201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
     # UPDATE / PATCH USER INFORMATION
@@ -188,26 +178,26 @@ def nerdrUsers():
         user_bio = request.json.get("bio")
         user_birthdate = request.json.get("birthdate")
         user_password = request.json.get("password")
-        login_token = request.json.get("loginToken")
-        user_id = request.json.get("userId")
+        loginToken = request.json.get("loginToken")
+        user_id = request.json.get("id")
         user_token_success = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [login_token,])
-            user_token_success = cursor.fetchall()[3]
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_token_success = cursor.fetchall()
             rows = cursor.rowcount
-            if user_token_success[1] == login_token:
+            if user_token_success:
                 if(user_email != "" and user_email != None):
-                    cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_id,])
+                    cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_token_success[2],])
                 if(username != "" and username != None):
-                    cursor.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_id,])
+                    cursor.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_token_success[2]])
                 if(user_bio != "" and user_bio != None):
-                    cursor.execute("UPDATE user SET bio = ? WHERE id = ?", [user_bio, user_token_success[3],])
+                    cursor.execute("UPDATE user SET bio = ? WHERE id = ?", [user_bio, user_token_success[2],])
                 if(user_birthdate != "" and user_birthdate != None):
-                    cursor.execute("UPDATE user SET birthdate = ? WHERE id = ?", [user_birthdate, user_id,])
+                    cursor.execute("UPDATE user SET birthdate = ? WHERE id = ?", [user_birthdate, user_token_success[2],])
                 if(user_password != "" and user_password != None):
-                    cursor.execute("UPDATE user SET password = ? WHERE id = ?", [user_password, user_id,])
+                    cursor.execute("UPDATE user SET password = ? WHERE id = ?", [user_password, user_token_success[2],])
             conn.commit()
             print(user_token_success)
         except mariadb.ProgrammingError as e:
@@ -233,7 +223,7 @@ def nerdrUsers():
                     "bio": user_bio,
                     "birthdate": user_birthdate,
                 }
-                return Response(json.dumps(user_info, default=str), mimetype="application/json", status=20)
+                return Response(json.dumps(user_info, default=str), mimetype="application/json", status=200)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
     
