@@ -84,7 +84,6 @@ def userLoginLogout():
 
 @app.route('/api/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 def nerdrUsers():
-    # CAN'T FIGURE OUT HOW TO LOOP THROUGH ALL USERS, ONLY GETTING ONE USER BACK
     # GET USERS OR ONE SPECIFIC USER
     if request.method == 'GET':
         conn = None
@@ -172,6 +171,7 @@ def nerdrUsers():
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
     # UPDATE / PATCH USER INFORMATION
+    # CANT DISPLAY JSON THAT IS SUPPOSED TO BE RETURNED
     elif request.method == 'PATCH':
         conn = None
         cursor = None
@@ -182,27 +182,25 @@ def nerdrUsers():
         user_birthdate = request.json.get("birthdate")
         user_password = request.json.get("password")
         loginToken = request.json.get("loginToken")
-        user_id = request.json.get("id")
-        user_token_success = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
-            user_token_success = cursor.fetchall()
-            rows = cursor.rowcount
-            if user_token_success:
+            cursor.execute("SELECT userId FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_success = cursor.fetchone()
+            print(user_success)
+            if user_success:
                 if(user_email != "" and user_email != None):
-                    cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_token_success[2],])
+                    cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_success[0],])
                 if(username != "" and username != None):
-                    cursor.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_token_success[2]])
+                    cursor.execute("UPDATE user SET username = ? WHERE id = ?", [username, user_success[0],])
                 if(user_bio != "" and user_bio != None):
-                    cursor.execute("UPDATE user SET bio = ? WHERE id = ?", [user_bio, user_token_success[2],])
+                    cursor.execute("UPDATE user SET bio = ? WHERE id = ?", [user_bio, user_success[0],])
                 if(user_birthdate != "" and user_birthdate != None):
-                    cursor.execute("UPDATE user SET birthdate = ? WHERE id = ?", [user_birthdate, user_token_success[2],])
+                    cursor.execute("UPDATE user SET birthdate = ? WHERE id = ?", [user_birthdate, user_success[0],])
                 if(user_password != "" and user_password != None):
-                    cursor.execute("UPDATE user SET password = ? WHERE id = ?", [user_password, user_token_success[2],])
-            conn.commit()
-            print(user_token_success)
+                    cursor.execute("UPDATE user SET password = ? WHERE id = ?", [user_password, user_success[0],])
+                conn.commit()
+                rows = cursor.rowcount
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -218,15 +216,15 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows == 1):
-                user_info = {
-                    "userId": user_id,
-                    "email": user_email,
-                    "username": username,
-                    "bio": user_bio,
-                    "birthdate": user_birthdate,
+            if(rows):
+                user_data = {
+                    "userId": user_success[0],
+                    "email": user[1],
+                    "username": user[2],
+                    "bio": user[3],
+                    "birthdate": user[4],
                 }
-                return Response(json.dumps(user_info, default=str), mimetype="application/json", status=200)
+                return Response(json.dumps(user_data, default=str), mimetype="application/json", status=200)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
     
@@ -236,16 +234,19 @@ def nerdrUsers():
         conn = None
         cursor = None
         user_password = request.json.get("password")
-        login_token = request.json.get("loginToken")
+        loginToken = request.json.get("loginToken")
         rows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT user_id FROM user_session WHERE loginToken = ?", [login_token,])
-            user_id = cursor.fetchall()[0][0]
-            cursor.execute("DELETE FROM user_session WHERE user_id = ?", [user_id,])
-            cursor.execute("DELETE FROM user WHERE password = ? AND id = ?", [user_password, user_id,])
-            conn.commit()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user = cursor.fetchall()
+            print(user)
+            if user[0][1] == loginToken:
+                cursor.execute("DELETE FROM user WHERE id =? AND password = ?", [user[0][2], user_password,])
+                conn.commit()
+            else:
+                return Response("There was an error with your password...", mimetype = "text/html", status = 500)
             rows = cursor.rowcount
         except mariadb.ProgrammingError as e:
             print(e)
@@ -262,39 +263,37 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows == 1):
+            if(rows != None):
                 return Response("Account has been deleted!", mimetype = "text/html", status = 204)
             else:
-                return Response("There was an error attempting to delete your account...", mimetype = "text/html", status = 500)
+                return Response("There was an error deleting your account...", mimetype = "text/html", status = 500)
 
 @app.route('/api/tweets', methods=['GET', 'POST', 'DELETE', 'PATCH'])
 
-# CANNOT GET ALL USERS?
+# CANNOT GET ALL USERS TWEETS?
 def userTweets():
     if request.method == 'GET':
         conn = None
         cursor = None
-        user_id = request.json.get("user_id")
-        user_tweets = None
+        user_id = request.json.get("id")
+        rows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            if user_id == "" and user_tweets == None:
-                cursor.execute("SELECT * FROM tweet")
-                rows = cursor.fetchall()
+            if user_id != None and user_id != "":
+                cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id WHERE u.id = ?", [user_id])
             else:
-                cursor.execute("SELECT userId, content, createdAt FROM tweet WHERE userId = ?", [user_id,])
-                rows = cursor.fetchall()       
-            # if user_id != "" and user_id != None:
-            # elif userId == "" and userId == None:
-            # else:
-            #     cursor.execute("SELECT * FROM tweet")
-            #     tweets = cursor.fetchall()
-        except mariadb.ProgrammingError:
+                cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id")
+            rows = cursor.fetchall() 
+            print(rows)
+        except mariadb.ProgrammingError as e:
+            print(e)
             print("There was a coding error by a NERDR here... ")
-        except mariadb.DatabaseError:
+        except mariadb.DatabaseError as e:
+            print(e)
             print("Oops, there's a database error...")
-        except mariadb.OperationalError:
+        except mariadb.OperationalError as e:
+            print(e)
             print("Connection error, please try again...")
         finally:
             if(cursor != None):
@@ -302,7 +301,17 @@ def userTweets():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows):
-                return Response(json.dumps(rows, default = str), mimetype = "application/json", status = 200)
+            if(rows != None):
+                all_tweets = []
+                for row in rows:
+                    users_tweets = {
+                        "tweetId": row[0],
+                        "userId": row[1],
+                        "username": row[4],
+                        "content": row[2],
+                        "createdAt": row[3]
+                    }  
+                    all_tweets.append(users_tweets)
+                return Response(json.dumps(all_tweets, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
