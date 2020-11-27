@@ -4,6 +4,7 @@ import json
 import dbcreds
 from flask_cors import CORS
 import secrets
+import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -16,14 +17,14 @@ def userLoginLogout():
     if request.method == 'POST':
         conn = None
         cursor = None
-        userEmail = request.json.get("email")
-        userPassword = request.json.get("password")
+        user_email = request.json.get("email")
+        user_password = request.json.get("password")
         rows = None
         user = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user WHERE email = ? AND password = ?", [userEmail, userPassword,]) 
+            cursor.execute("SELECT * FROM user WHERE email = ? AND password = ?", [user_email, user_password,]) 
             user = cursor.fetchall()
             rows = cursor.rowcount
             if(rows == 1):
@@ -260,7 +261,7 @@ def nerdrUsers():
             print("Connection error, please try again...")
         except Exception as e:
             print(e)
-            print("MAKE NEW EXCEPTION for this")
+            print("There's a Database error")
         finally:
             if(cursor != None):
                 cursor.close()
@@ -280,11 +281,12 @@ def userTweets():
         cursor = None
         userId = request.json.get("userId")
         rows = None
+        tweet_info = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             if userId != None and userId != "":
-                cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id WHERE u.id = ?", [userId])
+                cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id WHERE u.id = ?", [userId,])
             else:
                 cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id")
             rows = cursor.fetchall() 
@@ -316,5 +318,100 @@ def userTweets():
                     }  
                     all_tweets.append(users_tweets)
                 return Response(json.dumps(all_tweets, default = str), mimetype = "application/json", status = 200)
+            else:
+                return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
+    # CREATE TWEET
+    elif request.method == 'POST':
+            conn = None
+            cursor = None
+            loginToken = request.json.get("loginToken")
+            tweet_content = request.json.get("content")
+            rows = None
+            tweetId = None
+            createdAt = datetime.datetime.now().strftime("%Y-%m-%d")
+            try:
+                conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+                cursor = conn.cursor()
+                cursor.execute("SELECT us.userId, u.username FROM user_session us INNER JOIN user u ON us.userId = u.id WHERE us.loginToken = ?", [loginToken,])
+                user = cursor.fetchall()
+                print(user)
+                num_of_letters = len(tweet_content)
+                if num_of_letters <= 200 and len(user) == 1:
+                    cursor.execute("INSERT INTO tweet(content, userId, createdAt) VALUES(?, ?, ?)", [tweet_content, user[0][0], createdAt,])
+                    conn.commit()
+                    print(len(user))
+                    tweetId = cursor.lastrowid
+                else:
+                    print("NERDR cannot be over 200 letters!")
+            except mariadb.ProgrammingError as e:
+                print(e)
+                print("There was a coding error by a NERDR here... ")
+            except mariadb.DatabaseError as e:
+                print(e)
+                print("Oops, there's a database error...")
+            except mariadb.OperationalError as e:
+                print(e)
+                print("Connection error, please try again...")
+            except Exception as e:
+                print(e)
+            finally:
+                if(cursor != None):
+                    cursor.close()
+                if(conn != None):
+                    conn.rollback()
+                    conn.close()
+                if(tweetId != None):
+                    tweet_info = {
+                        "tweetId": tweetId,
+                        "userId": user[0][0],
+                        "username": user[0][1],
+                        "content": tweet_content,
+                        "createdAt": createdAt
+                    }
+                    return Response(json.dumps(tweet_info, default=str), mimetype="application/json", status=201)
+                else:
+                    return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+    # UPDATE TWEET
+    elif request.method == 'PATCH':
+        conn = None
+        cursor = None
+        rows = None
+        tweetId = request.json.get("tweetId")
+        loginToken = request.json.get("loginToken")
+        tweet_content = request.json.get("content")
+        updated_tweet_info = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user = cursor.fetchall()
+            if user[0][1] == loginToken:
+                cursor.execute("UPDATE tweet SET content = ? WHERE id = ?", [tweet_content, tweetId,])
+                conn.commit()
+            rows = cursor.rowcount
+            cursor.execute("SELECT * FROM tweet WHERE id = ?", [tweetId,])
+            updated_tweet = cursor.fetchall()
+            print(updated_tweet)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                updated_tweet_info = {
+                    "tweetId": updated_tweet[0][0],
+                    "content": updated_tweet[0][1],
+                }  
+                return Response(json.dumps(updated_tweet_info, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
