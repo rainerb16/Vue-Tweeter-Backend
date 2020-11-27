@@ -39,6 +39,8 @@ def userLoginLogout():
             print("Oops, there's a database error...")
         except mariadb.OperationalError:
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -71,6 +73,8 @@ def userLoginLogout():
         except mariadb.OperationalError as e:
             print(e)
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -105,6 +109,8 @@ def nerdrUsers():
             print("Oops, there's a database error...")
         except mariadb.OperationalError:
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -153,6 +159,8 @@ def nerdrUsers():
             print("Oops, there's a database error...")
         except mariadb.OperationalError:
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -212,6 +220,8 @@ def nerdrUsers():
         except mariadb.OperationalError as e:
             print(e)
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -300,6 +310,8 @@ def userTweets():
         except mariadb.OperationalError as e:
             print(e)
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -401,6 +413,8 @@ def userTweets():
         except mariadb.OperationalError as e:
             print(e)
             print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
         finally:
             if(cursor != None):
                 cursor.close()
@@ -415,3 +429,40 @@ def userTweets():
                 return Response(json.dumps(updated_tweet_info, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
+    # DELETE TWEET
+    elif request.method == 'DELETE':
+        conn = None
+        cursor = None
+        rows = None
+        tweetId = request.json.get("tweetId")
+        loginToken = request.json.get("loginToken")
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user = cursor.fetchall()
+            if user[0][1] == loginToken:
+                cursor.execute("DELETE FROM tweet WHERE id = ?", [tweetId,])
+                conn.commit()
+                rows = cursor.rowcount
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(rows == 1):
+                return Response("NERDR deleted!", mimetype = "text/html", status = 204)
+            else:
+                return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
