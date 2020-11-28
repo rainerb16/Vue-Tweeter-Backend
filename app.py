@@ -466,3 +466,50 @@ def userTweets():
                 return Response("NERDR deleted!", mimetype = "text/html", status = 204)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
+
+@app.route('/api/follows', methods=['GET', 'POST', 'DELETE'])
+def userfollow():
+    # GET PEOPLE THE USER FOLLOWS
+    if request.method == 'GET':
+        conn = None
+        cursor = None
+        userId = request.json.get("userId")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            # NEED TO DO INNER JOIN BETWEEN USER AND FOLLOW TABLES
+            cursor.execute("SELECT u.id, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.followId WHERE f.userId = ?", [userId,])
+            follows = cursor.fetchall()
+            print(follows)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if(follows != None):
+                user_data = []
+                for follow in follows:
+                    user_following_info = {
+                        "userId": follow[0],
+                        "email": follow[1],
+                        "username": follow[2],
+                        "bio": follow[3],
+                        "birthdate": follow[4]
+                    }  
+                    user_data.append(user_following_info)
+                return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 200)
+            else:
+                return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
