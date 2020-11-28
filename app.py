@@ -88,20 +88,22 @@ def userLoginLogout():
 
 @app.route('/api/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 def nerdrUsers():
+    # issues finding one specific user
     # GET USERS OR ONE SPECIFIC USER
     if request.method == 'GET':
         conn = None
         cursor = None
-        userId = request.json.get("userId")
-        rows = None
+        user = None
+        userId = request.args.get("userId")
+        users = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            if userId != None and userId != "":
+            if userId != None:
                 cursor.execute("SELECT * FROM user WHERE id = ?", [userId],)
             else:
                 cursor.execute("SELECT * FROM user")
-            rows = cursor.fetchall()
+            users = cursor.fetchall()
         except mariadb.ProgrammingError:
             print("There was a coding error by a NERDR here... ")
         except mariadb.DatabaseError:
@@ -116,15 +118,15 @@ def nerdrUsers():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if(rows):
+            if(users != None):
                 all_users_data = []
-                for row in rows:
+                for user in users:
                     user_data = {
-                        "userId": row[0],
-                        "email": row[1],
-                        "username": row[2],
-                        "bio": row[3],
-                        "birthdate": row[4]
+                        "userId": user[0],
+                        "email": user[1],
+                        "username": user[2],
+                        "bio": user[3],
+                        "birthdate": user[4]
                         }  
                     all_users_data.append(user_data)
                 return Response(json.dumps(all_users_data, default = str), mimetype = "application/json", status = 200)
@@ -193,7 +195,7 @@ def nerdrUsers():
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             cursor.execute("SELECT userId FROM user_session WHERE loginToken = ?", [loginToken,])
-            user_success = cursor.fetchone())
+            user_success = cursor.fetchone()
             if user_success:
                 if(user_email != "" and user_email != None):
                     cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_success[0],])
@@ -284,7 +286,7 @@ def userTweets():
     if request.method == 'GET':
         conn = None
         cursor = None
-        userId = request.json.get("userId")
+        userId = request.args.get("userId")
         rows = None
         tweet_info = None
         try:
@@ -460,18 +462,19 @@ def userTweets():
 
 @app.route('/api/follows', methods=['GET', 'POST', 'DELETE'])
 def userfollow():
+    # GETTING EMPTY ARRAY
     # USER THE USERID FOLLOWS
     if request.method == 'GET':
         conn = None
         cursor = None
-        userId = request.json.get("userId")
-        rows = None
+        userId = request.args.get("userId")
+        follows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            # NEED TO DO INNER JOIN BETWEEN USER AND FOLLOW TABLES
             cursor.execute("SELECT u.id, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.followId WHERE f.userId = ?", [userId,])
             follows = cursor.fetchall()
+            print(follows)
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -577,7 +580,54 @@ def userfollow():
             if(conn != None):
                 conn.rollback()
                 conn.close()
-            if rows == 1:
+            if (rows == 1):
                 return Response("Unfollowed!", mimetype="text/html", status=204)
+            else:
+                return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
+
+@app.route('/api/followers', methods=['GET'])
+def getFollowers():
+    # GET USERS THAT FOLLOW USERID
+    if request.method == 'GET':
+        conn = None
+        cursor = None
+        userId = request.args.get("userId")
+        follower_info = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT f.userId, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.userId WHERE f.followId = ?", [userId,])
+            followers = cursor.fetchall()
+            print(followers)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if (followers != None):
+                follower_data = []
+                for follower in followers: 
+                    follower_info = {
+                        "userId": follower[0],
+                        "email": follower[1],
+                        "username": follower[2],
+                        "bio": follower[3],
+                        "birthdate": follower[4]
+                    }
+                    print(follower_info)
+                    follower_data.append(follower_info) 
+                return Response(json.dumps(follower_data, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
