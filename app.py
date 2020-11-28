@@ -29,7 +29,6 @@ def userLoginLogout():
             rows = cursor.rowcount
             if(rows == 1):
                 loginToken = secrets.token_hex(16)
-                print(loginToken)
                 cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [user[0][0], loginToken])
                 conn.commit()
         except mariadb.ProgrammingError as e:
@@ -194,8 +193,7 @@ def nerdrUsers():
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             cursor.execute("SELECT userId FROM user_session WHERE loginToken = ?", [loginToken,])
-            user_success = cursor.fetchone()
-            print(user_success)
+            user_success = cursor.fetchone())
             if user_success:
                 if(user_email != "" and user_email != None):
                     cursor.execute("UPDATE user SET email = ? WHERE id = ?", [user_email, user_success[0],])
@@ -251,13 +249,10 @@ def nerdrUsers():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
             user = cursor.fetchall()
-            print(user[0][1])
-            print(loginToken)
             if user[0][1] == loginToken:
                 cursor.execute("DELETE FROM user WHERE id = ? AND password = ?", [user[0][2], user_password,])
                 conn.commit()
                 rows = cursor.rowcount
-                print(rows)
             else:
                 return Response("There was an error with your password...", mimetype = "text/html", status = 500)
         except mariadb.ProgrammingError as e:
@@ -300,7 +295,6 @@ def userTweets():
             else:
                 cursor.execute("SELECT t.id, t.userId, t.content, t.createdAt, u.username FROM tweet t INNER JOIN user u ON t.userId = u.id")
             rows = cursor.fetchall() 
-            print(rows)
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -346,12 +340,10 @@ def userTweets():
                 cursor = conn.cursor()
                 cursor.execute("SELECT us.userId, u.username FROM user_session us INNER JOIN user u ON us.userId = u.id WHERE us.loginToken = ?", [loginToken,])
                 user = cursor.fetchall()
-                print(user)
                 num_of_letters = len(tweet_content)
                 if num_of_letters <= 200 and len(user) == 1:
                     cursor.execute("INSERT INTO tweet(content, userId, createdAt) VALUES(?, ?, ?)", [tweet_content, user[0][0], createdAt,])
                     conn.commit()
-                    print(len(user))
                     tweetId = cursor.lastrowid
                 else:
                     print("NERDR cannot be over 200 letters!")
@@ -403,7 +395,6 @@ def userTweets():
             rows = cursor.rowcount
             cursor.execute("SELECT * FROM tweet WHERE id = ?", [tweetId,])
             updated_tweet = cursor.fetchall()
-            print(updated_tweet)
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -469,7 +460,7 @@ def userTweets():
 
 @app.route('/api/follows', methods=['GET', 'POST', 'DELETE'])
 def userfollow():
-    # GET PEOPLE THE USER FOLLOWS
+    # USER THE USERID FOLLOWS
     if request.method == 'GET':
         conn = None
         cursor = None
@@ -481,7 +472,6 @@ def userfollow():
             # NEED TO DO INNER JOIN BETWEEN USER AND FOLLOW TABLES
             cursor.execute("SELECT u.id, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.followId WHERE f.userId = ?", [userId,])
             follows = cursor.fetchall()
-            print(follows)
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
@@ -513,3 +503,81 @@ def userfollow():
                 return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 200)
             else:
                 return Response("Something went wrong...please try again", mimetype = "text/html", status = 500)
+    # CREATES A FOLLOW RELATIONSHIP BETWEEN TWO USERS
+    if request.method == 'POST':
+        conn = None
+        cursor = None
+        followId = request.json.get("followId")
+        loginToken = request.json.get("loginToken")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT userId FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_making_follow = cursor.fetchall()
+            if user_making_follow[0][0] != followId:
+                cursor.execute("INSERT INTO follow(followId, userId) VALUES(?, ?)", [followId, user_making_follow[0][0]])
+                conn.commit()
+                rows = cursor.rowcount
+            else:
+                return Response("You cannot follow yourself!", mimetype="text/html", status=400)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if rows == 1:
+                return Response("Followed!", mimetype="text/html", status=204)
+            else:
+                return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
+    # DELETE A FOLLOW RELATIONSHIP- unfollow
+    if request.method == 'DELETE':
+        conn = None
+        cursor = None
+        followId = request.json.get("followId")
+        loginToken = request.json.get("loginToken")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_making_unfollow = cursor.fetchall()
+            if user_making_unfollow[0][1] == loginToken and user_making_unfollow[0][2] != followId :
+                cursor.execute("DELETE FROM follow WHERE userId = ? AND followId = ?", [user_making_unfollow[0][2], followId,])
+                conn.commit()
+                rows = cursor.rowcount
+            else:
+                return Response("There was an error!", mimetype="text/html", status=400)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if rows == 1:
+                return Response("Unfollowed!", mimetype="text/html", status=204)
+            else:
+                return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
