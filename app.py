@@ -827,8 +827,12 @@ def commentsEndPoint():
             if user_making_comment[0][1] == loginToken and num_of_letters <= 150:
                 cursor.execute("INSERT INTO comment(content, createdAt, tweetId, userId) VALUES(?, ?, ?, ?)", [comment_content, createdAt, tweetId, user_making_comment[0][2]])
                 conn.commit()
-                cursor.execute("SELECT c.id, c.tweetId, c.userId, c.content, c.createdAt, u.username FROM user u INNER JOIN comment c ON u.id = c.userId WHERE c.tweetId = ?", [tweetId,])
+                rows = cursor.rowcount
+
+                #  GETTING ALL USERS AND COMMENTS, NEED TO ONLY GET THE USER THAT MADE POST AND THE COMMENT
+                cursor.execute("SELECT comment.id, user.username FROM comment INNER JOIN user ON user.id = comment.userId WHERE comment.tweetId = ?", [tweetId,])
                 user_comment = cursor.fetchall()
+                print(user_comment)
             else:
                 return Response("Comment cannot be over 150 characters!", mimetype="text/html", status = 400)
         except mariadb.ProgrammingError as e:
@@ -851,11 +855,11 @@ def commentsEndPoint():
             if (rows == 1):
                 comment_info = {
                     "commentId": user_comment[0][0],
-                    "tweetId": user_comment[0][1],
-                    "userId": user_comment[0][2],
-                    "username": user_comment[0][5],
-                    "content": user_comment[0][3],
-                    "createdAt": user_comment[0][4]
+                    "tweetId": tweetId,
+                    "userId": user_making_comment[0][2],
+                    "username": user_comment[0][1],
+                    "content": comment_content,
+                    "createdAt": createdAt
                 }
                 return Response(json.dumps(comment_info, default = str), mimetype = "application/json", status = 200)
             else:
@@ -868,12 +872,13 @@ def commentsEndPoint():
         loginToken = request.json.get("loginToken")
         commentId = request.json.get("commentId")
         comment_content = request.json.get("content")
+        createdAt = datetime.datetime.now().strftime("%Y-%m-%d")
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
             user_updating_comment = cursor.fetchall()
-            cursor.execute("SELECT userId FROM comment WHERE id =?", [commentId,])
+            cursor.execute("SELECT userId FROM comment WHERE id = ?", [commentId,])
             comment_owner = cursor.fetchall()
             if user_updating_comment[0][1] == loginToken and user_updating_comment[0][2] == comment_owner[0][0]:
                 cursor.execute("UPDATE comment SET content = ? WHERE id = ?", [comment_content, commentId])
@@ -881,7 +886,7 @@ def commentsEndPoint():
                 rows = cursor.rowcount
             else:
                 return Response("You are not the owner of this comment!", mimetype="text/html", status = 400)
-            if rows == 1:
+            if rows != None:
                 cursor.execute("SELECT comment.*, user.username FROM user INNER JOIN comment ON user.id = comment.userId WHERE comment.id = ?", [commentId,])
                 user_comment = cursor.fetchall()
         except mariadb.ProgrammingError as e:
@@ -903,16 +908,16 @@ def commentsEndPoint():
                 conn.close()
             if (rows == 1):
                 comment_info = {
-                    "commentId": user_comment[0][0],
+                    "commentId": commentId,
                     "tweetId": user_comment[0][3],
-                    "userId": user_comment[0][2],
+                    "userId": user_comment[0][4],
                     "username": user_comment[0][5],
-                    "content": user_comment[0][1],
-                    "createdAt": user_comment[0][2]
+                    "content": comment_content,
+                    "createdAt": createdAt
                 }
                 return Response(json.dumps(comment_info, default = str), mimetype = "application/json", status = 200)
             else:
-                return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
+                return Response("Something went wrong...please try again.", mimetype = "text/html", status = 500)
     # DELETE COMMENT - ONLY IF USER OWNS COMMENT
     elif request.method == 'DELETE':
         conn = None
@@ -952,6 +957,134 @@ def commentsEndPoint():
                 conn.close()
             if (rows != None):
                 return Response("Comment deleted!", mimetype="text/html", status = 204)
+            else:
+                return Response("Something went wrong...please try again.", mimetype = "text/html", status = 500)
+
+@app.route('/api/comment-likes', methods=['GET', 'POST', 'DELETE'])
+def commentLikesEndpoint():
+    # GET ALL LIKES ON ALL COMMENTS OR ALL LIKES ON A SPECIFIC COMMENT
+    if request.method == 'GET':
+        conn = None
+        cursor = None
+        commentId = request.args.get("commentId")
+        likes = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT comment_like.commentId, comment_like.userId, user.username FROM comment_like INNER JOIN user ON user.id = comment_like.userId WHERE comment_like.commentId = ?", [commentId,])
+            likes = cursor.fetchall()
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if (likes != None):
+                user_data = []
+                for like in likes: 
+                    likes_info = {
+                        "commentId": like[0],
+                        "userId": like[1],
+                        "username": like[2]
+                    }
+                    user_data.append(likes_info) 
+                return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 200)
+            else:
+                return Response("Something went wrong...please try again.", mimetype="text/html", status=500)
+    #  CREATE NEW LIKE FOR USER ON A SPECIFIC COMMENT
+    elif request.method == 'POST':
+        conn = None
+        cursor = None
+        loginToken = request.json.get("loginToken")
+        commentId = request.json.get("commentId")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_making_like = cursor.fetchall()
+            print(user_making_like)
+            if user_making_like[0][1] == loginToken:
+                cursor.execute("INSERT INTO comment_like(commentId, userId) VALUES(?, ?)", [commentId, user_making_like[0][2],])
+                conn.commit()
+                rows = cursor.rowcount
+            else:
+                return Response("There was an error!", mimetype="text/html", status = 400)
+            cursor.execute("SELECT comment_like.*, user.username FROM comment_like INNER JOIN user ON user.id = comment_like.userId WHERE comment_like.commentId = ?", [commentId,])
+            likes = cursor.fetchall()
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if (rows != None):
+                return Response("Comment Liked!", mimetype="text/html", status = 204)
+            else:
+                return Response("Something went wrong...please try again.", mimetype = "text/html", status = 500)
+    # UNLIKE COMMENT
+    elif request.method == 'DELETE':
+        conn = None
+        cursor = None
+        loginToken = request.json.get("loginToken")
+        commentId = request.json.get("commentId")
+        rows = None
+        try:
+            conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
+            user_making_unlike = cursor.fetchall()
+            print(user_making_unlike)
+            cursor.execute("SELECT userId FROM comment_like WHERE commentId = ?", [commentId,])
+            like_owner = cursor.fetchall()
+            print(like_owner)
+            if user_making_unlike[0][1] == loginToken:
+                cursor.execute("DELETE FROM comment_like WHERE commentId = ? AND userId = ?", [commentId, user_making_unlike[0][2]])
+                conn.commit()
+                rows = cursor.rowcount
+            else:
+                return Response("You cannot unlike a comment you haven't liked!", mimetype="text/html", status = 400)
+        except mariadb.ProgrammingError as e:
+            print(e)
+            print("There was a coding error by a NERDR here... ")
+        except mariadb.DatabaseError as e:
+            print(e)
+            print("Oops, there's a database error...")
+        except mariadb.OperationalError as e:
+            print(e)
+            print("Connection error, please try again...")
+        except Exception as e:
+            print(e)
+        finally:
+            if(cursor != None):
+                cursor.close()
+            if(conn != None):
+                conn.rollback()
+                conn.close()
+            if (rows != None):
+                return Response("Comment unliked!", mimetype="text/html", status = 204)
             else:
                 return Response("Something went wrong...please try again.", mimetype = "text/html", status = 500)
 
