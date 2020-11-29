@@ -816,6 +816,8 @@ def commentsEndPoint():
         loginToken = request.json.get("loginToken")
         comment_content = request.json.get("content")
         createdAt = datetime.datetime.now().strftime("%Y-%m-%d")
+        last_comment_userId = None
+        user_comment = None
         rows = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
@@ -826,13 +828,11 @@ def commentsEndPoint():
             rows = cursor.rowcount
             if user_making_comment[0][1] == loginToken and num_of_letters <= 150:
                 cursor.execute("INSERT INTO comment(content, createdAt, tweetId, userId) VALUES(?, ?, ?, ?)", [comment_content, createdAt, tweetId, user_making_comment[0][2]])
+                last_comment_userId = cursor.lastrowid
                 conn.commit()
                 rows = cursor.rowcount
-
-                #  GETTING ALL USERS AND COMMENTS, NEED TO ONLY GET THE USER THAT MADE POST AND THE COMMENT
-                cursor.execute("SELECT comment.id, user.username FROM comment INNER JOIN user ON user.id = comment.userId WHERE comment.tweetId = ?", [tweetId,])
+                cursor.execute("SELECT comment.*, user.username FROM comment INNER JOIN user ON user.id = comment.userId WHERE comment.id = ?", [last_comment_userId,])
                 user_comment = cursor.fetchall()
-                print(user_comment)
             else:
                 return Response("Comment cannot be over 150 characters!", mimetype="text/html", status = 400)
         except mariadb.ProgrammingError as e:
@@ -854,10 +854,10 @@ def commentsEndPoint():
                 conn.close()
             if (rows == 1):
                 comment_info = {
-                    "commentId": user_comment[0][0],
+                    "commentId": last_comment_userId,
                     "tweetId": tweetId,
                     "userId": user_making_comment[0][2],
-                    "username": user_comment[0][1],
+                    "username": user_comment[0][5],
                     "content": comment_content,
                     "createdAt": createdAt
                 }
