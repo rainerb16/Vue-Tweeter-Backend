@@ -3,14 +3,14 @@ from flask import Flask, request, Response
 import json
 import dbcreds
 from flask_cors import CORS
-import secrets
 import datetime
+import secrets
 
 app = Flask(__name__)
 CORS(app)
 
 @app.route('/api/login', methods=['POST', 'DELETE'])
-# CAN'T FIGURE OUT HOW TO SHOW JSON DATA SENT BACK
+
 def loginEndPoint(): 
     # USER LOGIN
     if request.method == 'POST':
@@ -19,25 +19,29 @@ def loginEndPoint():
         user_email = request.json.get("email")
         user_password = request.json.get("password")
         rows = None
-        user = None
+        userId = None
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user WHERE email = ? AND password = ?", [user_email, user_password,]) 
-            user = cursor.fetchall()
-            rows = cursor.rowcount
-            if(rows == 1):
-                loginToken = secrets.token_hex(16)
-                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [user[0][0], loginToken])
+            cursor.execute("SELECT id, email, password, bio, birthdate, username FROM user WHERE email = ? AND password = ?", [user_email, user_password,]) 
+            userId = cursor.fetchall()
+            loginToken = secrets.token_hex(16)
+            print(loginToken)
+            print(userId)
+            if(userId != None):
+                cursor.execute("INSERT INTO user_session(userId, loginToken) VALUES(?, ?)", [userId[0][0], loginToken,])
                 conn.commit()
+                rows = cursor.rowcount
             else:
-                return Response("Invalid login information!", mimetype = "text/html", status = 400)
+                print("Invalid login information!")
         except mariadb.ProgrammingError as e:
             print(e)
             print("There was a coding error by a NERDR here... ")
-        except mariadb.DatabaseError:
+        except mariadb.DatabaseError as e:
+            print(e)
             print("Oops, there's a database error...")
-        except mariadb.OperationalError:
+        except mariadb.OperationalError as e:
+            print(e)
             print("Connection error, please try again...")
         except Exception as e:
             print(e)
@@ -48,7 +52,15 @@ def loginEndPoint():
                 conn.rollback()
                 conn.close()
             if(rows == 1):
-                return Response("Logged in!", mimetype = "text/html", status = 201)
+                user_data = {
+                    "userId": userId[0][0],
+                    "email": userId[0][1],
+                    "username": userId[0][5],
+                    "bio": userId[0][3],
+                    "birthdate": userId[0][4],
+                    "loginToken": loginToken
+                }
+                return Response(json.dumps(user_data, default = str), mimetype = "application/json", status = 201)
             else:
                 return Response("Something went wrong... please try again", mimetype = "text/html", status = 500)
     # USER LOGOUT 
@@ -56,19 +68,12 @@ def loginEndPoint():
         conn = None
         cursor = None
         rows = None
-        userId = request.json.get("id")
         loginToken = request.json.get("loginToken")
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM user_session WHERE loginToken = ?", [loginToken,])
-            token = cursor.fetchall()
-            print(token)
-            if token[0][1] == loginToken:
-                cursor.execute("DELETE FROM user_session WHERE loginToken = ?", [loginToken,])
-                conn.commit()
-            else:
-                return Response("Error! Please try again...", mimetype = "text/html", status = 400)
+            cursor.execute("DELETE FROM user_session WHERE loginToken = ?", [loginToken,])
+            conn.commit()
             rows = cursor.rowcount
         except mariadb.ProgrammingError as e:
             print(e)
@@ -95,7 +100,7 @@ def loginEndPoint():
 
 @app.route('/api/users', methods=['GET', 'POST', 'PATCH', 'DELETE'])
 def usersEndPoint():
-    # issues finding one specific user
+
     # GET USERS OR ONE SPECIFIC USER
     if request.method == 'GET':
         conn = None
@@ -478,7 +483,7 @@ def followsEndPoint():
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT u.id, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.followId WHERE f.userId = ?", [userId,])
+            cursor.execute("SELECT f.userId, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.userId WHERE f.followId = ?", [userId,])
             follows = cursor.fetchall()
             print(follows)
         except mariadb.ProgrammingError as e:
