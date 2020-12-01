@@ -474,7 +474,7 @@ def tweetsEndpoint():
 
 @app.route('/api/follows', methods=['GET', 'POST', 'DELETE'])
 def followsEndPoint():
-    # USER THE USERID FOLLOWS
+    # USERS THE USERID FOLLOWS
     if request.method == 'GET':
         conn = None
         cursor = None
@@ -483,7 +483,7 @@ def followsEndPoint():
         try:
             conn = mariadb.connect(host = dbcreds.host, password = dbcreds.password, user = dbcreds.user, port = dbcreds.port, database = dbcreds.database)
             cursor = conn.cursor()
-            cursor.execute("SELECT f.userId, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.userId WHERE f.followId = ?", [userId,])
+            cursor.execute("SELECT f.followId, u.email, u.username, u.bio, u.birthdate FROM follow f INNER JOIN user u ON u.id = f.followId WHERE f.userId = ?", [userId,])
             follows = cursor.fetchall()
             print(follows)
         except mariadb.ProgrammingError as e:
